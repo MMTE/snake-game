@@ -133,6 +133,29 @@
                         </label>
                     </div>
                 </div>
+
+                <!-- Joystick Sensitivity Setting (Mobile Only) -->
+                <div class="setting-group joystick-setting">
+                    <label class="setting-label">Joystick Sensitivity</label>
+                    <div class="setting-options sensitivity-options">
+                        <label class="radio-option">
+                            <input type="radio" name="joystick-sensitivity" value="low">
+                            <span class="radio-label">Low</span>
+                            <span class="radio-hint">20% dead zone</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="joystick-sensitivity" value="medium" checked>
+                            <span class="radio-label">Medium</span>
+                            <span class="radio-hint">12% dead zone</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="joystick-sensitivity" value="high">
+                            <span class="radio-label">High</span>
+                            <span class="radio-hint">8% dead zone</span>
+                        </label>
+                    </div>
+                    <p class="setting-note">Current dead zone: <span id="dead-zone-value">12%</span></p>
+                </div>
             </div>
             
             <div class="settings-footer">
@@ -164,6 +187,7 @@
             <div id="touch-controls" class="touch-controls">
                 <div id="joystick-container" class="joystick-container">
                     <div id="joystick-base" class="joystick-base">
+                        <div id="joystick-direction" class="joystick-direction"></div>
                         <div id="joystick-thumb" class="joystick-thumb"></div>
                     </div>
                 </div>

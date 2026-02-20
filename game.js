@@ -10,7 +10,9 @@ const DEFAULT_SETTINGS = {
     walls: true,          // true = walls kill, false = wrap around
     gridSize: 'medium',   // small, medium, large
     snakeColor: 'green',  // green, blue, purple, orange
-    sound: false          // placeholder for sound
+    sound: false,         // placeholder for sound
+    joystickSensitivity: 'medium',  // low, medium, high
+    joystickDeadZone: 12   // percentage (10-25)
 };
 
 // Speed configurations (milliseconds between moves)
@@ -178,6 +180,16 @@ function updateSettingsUI() {
         soundToggle.checked = gameSettings.sound;
         if (soundLabel) soundLabel.textContent = gameSettings.sound ? 'ON' : 'OFF';
     }
+    
+    // Joystick Sensitivity
+    const sensitivityRadio = document.querySelector(`input[name="joystick-sensitivity"][value="${gameSettings.joystickSensitivity || 'medium'}"]`);
+    if (sensitivityRadio) sensitivityRadio.checked = true;
+    
+    // Joystick Dead Zone
+    const deadZoneValue = document.getElementById('dead-zone-value');
+    if (deadZoneValue) {
+        deadZoneValue.textContent = `${gameSettings.joystickDeadZone || 12}%`;
+    }
 }
 
 // Setup settings event listeners
@@ -235,6 +247,28 @@ function setupSettingsListeners() {
             saveSettings();
         });
     }
+    
+    // Joystick sensitivity options
+    document.querySelectorAll('input[name="joystick-sensitivity"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            gameSettings.joystickSensitivity = e.target.value;
+            // Apply sensitivity to dead zone
+            switch (e.target.value) {
+                case 'low':
+                    gameSettings.joystickDeadZone = 20;
+                    break;
+                case 'medium':
+                    gameSettings.joystickDeadZone = 12;
+                    break;
+                case 'high':
+                    gameSettings.joystickDeadZone = 8;
+                    break;
+            }
+            const deadZoneValue = document.getElementById('dead-zone-value');
+            if (deadZoneValue) deadZoneValue.textContent = `${gameSettings.joystickDeadZone}%`;
+            saveSettings();
+        });
+    });
 }
 
 // Show settings screen
@@ -870,15 +904,34 @@ function handleTouchEnd(e) {
 // Virtual Joystick Variables
 let joystickBase = null;
 let joystickThumb = null;
+let joystickDirectionIndicator = null;
 let joystickActive = false;
 let joystickTouchId = null;
-const JOYSTICK_DEAD_ZONE = 0.2; // 20% dead zone in center
+let currentJoystickDirection = null; // Track current detected direction
+let lastJoystickDirection = null; // For hysteresis
+let joystickDirectionLockTime = 0; // Timestamp when direction was locked
 const JOYSTICK_MAX_DISTANCE = 42; // Max distance thumb can move from center
+const DIRECTION_LOCK_DURATION = 80; // ms to keep direction locked before allowing change
+const HYSTERESIS_THRESHOLD = 0.15; // Extra threshold to change from current direction
+
+// Direction angle zones (in radians, where right = 0, clockwise)
+const DIRECTION_ZONES = {
+    RIGHT: { min: -Math.PI / 8, max: Math.PI / 8 },
+    DOWN: { min: Math.PI / 8, max: 7 * Math.PI / 8 },
+    LEFT: { min: 7 * Math.PI / 8, max: Math.PI, alt: { min: -Math.PI, max: -7 * Math.PI / 8 } },
+    UP: { min: -7 * Math.PI / 8, max: -Math.PI / 8 }
+};
+
+// Get current joystick dead zone from settings (0-1 normalized)
+function getJoystickDeadZone() {
+    return (gameSettings.joystickDeadZone || 12) / 100;
+}
 
 // Setup Virtual Joystick
 function setupVirtualJoystick() {
     joystickBase = document.getElementById('joystick-base');
     joystickThumb = document.getElementById('joystick-thumb');
+    joystickDirectionIndicator = document.getElementById('joystick-direction');
     
     if (!joystickBase || !joystickThumb) return;
     
@@ -963,7 +1016,7 @@ function updateJoystickPosition(touch) {
         deltaY = Math.sin(angle) * JOYSTICK_MAX_DISTANCE;
     }
     
-    // Update thumb position
+    // Update thumb position with smooth transition
     joystickThumb.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
     
     // Calculate normalized values (-1 to 1)
@@ -971,34 +1024,104 @@ function updateJoystickPosition(touch) {
     const normalizedY = deltaY / JOYSTICK_MAX_DISTANCE;
     
     // Determine direction based on joystick position
-    updateDirectionFromJoystick(normalizedX, normalizedY);
+    const detectedDirection = detectDirectionFromJoystick(normalizedX, normalizedY, distance);
+    
+    // Update visual direction indicator
+    updateDirectionIndicator(detectedDirection);
+    
+    // Apply direction with anti-reversal protection
+    if (detectedDirection && gameState === GameState.PLAYING) {
+        applyDirectionSafely(detectedDirection);
+    }
 }
 
-// Update Direction from Joystick
-function updateDirectionFromJoystick(x, y) {
-    // Calculate distance from center
-    const distance = Math.sqrt(x * x + y * y);
+// Detect direction from joystick with improved algorithm
+function detectDirectionFromJoystick(x, y, distance) {
+    const deadZone = getJoystickDeadZone();
+    const normalizedDistance = distance / JOYSTICK_MAX_DISTANCE;
     
     // Apply dead zone
-    if (distance < JOYSTICK_DEAD_ZONE) {
-        return; // Ignore input in dead zone
+    if (normalizedDistance < deadZone) {
+        currentJoystickDirection = null;
+        return null;
     }
     
-    // Determine primary direction (whichever axis is stronger)
-    if (Math.abs(x) > Math.abs(y)) {
-        // Horizontal movement dominates
-        if (x > 0 && direction !== Direction.LEFT) {
-            nextDirection = Direction.RIGHT;
-        } else if (x < 0 && direction !== Direction.RIGHT) {
-            nextDirection = Direction.LEFT;
+    // Calculate angle (in radians)
+    const angle = Math.atan2(y, x);
+    
+    // Determine direction based on angle zones
+    let newDirection = null;
+    
+    if (angle >= DIRECTION_ZONES.UP.min && angle <= DIRECTION_ZONES.UP.max) {
+        newDirection = Direction.UP;
+    } else if (angle >= DIRECTION_ZONES.RIGHT.min && angle <= DIRECTION_ZONES.RIGHT.max) {
+        newDirection = Direction.RIGHT;
+    } else if (angle >= DIRECTION_ZONES.DOWN.min && angle <= DIRECTION_ZONES.DOWN.max) {
+        newDirection = Direction.DOWN;
+    } else if ((angle >= DIRECTION_ZONES.LEFT.min && angle <= DIRECTION_ZONES.LEFT.max) ||
+               (DIRECTION_ZONES.LEFT.alt && angle >= DIRECTION_ZONES.LEFT.alt.min && angle <= DIRECTION_ZONES.LEFT.alt.max)) {
+        newDirection = Direction.LEFT;
+    }
+    
+    // Apply hysteresis: require more movement to change from current direction
+    if (currentJoystickDirection && newDirection !== currentJoystickDirection) {
+        // Check if we're in a hysteresis zone near the boundary
+        const now = Date.now();
+        const timeSinceLastLock = now - joystickDirectionLockTime;
+        
+        // If we recently locked a direction, require stronger input to change
+        if (timeSinceLastLock < DIRECTION_LOCK_DURATION) {
+            return currentJoystickDirection;
         }
+        
+        // Apply hysteresis threshold - need to move further to change direction
+        if (normalizedDistance < deadZone + HYSTERESIS_THRESHOLD) {
+            return currentJoystickDirection;
+        }
+    }
+    
+    // Update direction tracking
+    if (newDirection !== currentJoystickDirection) {
+        joystickDirectionLockTime = Date.now();
+    }
+    currentJoystickDirection = newDirection;
+    
+    return newDirection;
+}
+
+// Apply direction with protection against 180-degree reversals
+function applyDirectionSafely(newDirection) {
+    // Prevent direct reversal (can't go opposite direction)
+    if (direction === Direction.UP && newDirection === Direction.DOWN) return;
+    if (direction === Direction.DOWN && newDirection === Direction.UP) return;
+    if (direction === Direction.LEFT && newDirection === Direction.RIGHT) return;
+    if (direction === Direction.RIGHT && newDirection === Direction.LEFT) return;
+    
+    // Apply the direction
+    nextDirection = newDirection;
+}
+
+// Update visual direction indicator on joystick
+function updateDirectionIndicator(detectedDirection) {
+    if (!joystickDirectionIndicator) return;
+    
+    // Remove all direction classes
+    joystickDirectionIndicator.classList.remove('dir-up', 'dir-down', 'dir-left', 'dir-right');
+    
+    // Add appropriate class if direction is detected
+    if (detectedDirection) {
+        if (detectedDirection === Direction.UP) {
+            joystickDirectionIndicator.classList.add('dir-up');
+        } else if (detectedDirection === Direction.DOWN) {
+            joystickDirectionIndicator.classList.add('dir-down');
+        } else if (detectedDirection === Direction.LEFT) {
+            joystickDirectionIndicator.classList.add('dir-left');
+        } else if (detectedDirection === Direction.RIGHT) {
+            joystickDirectionIndicator.classList.add('dir-right');
+        }
+        joystickDirectionIndicator.classList.add('active');
     } else {
-        // Vertical movement dominates
-        if (y > 0 && direction !== Direction.UP) {
-            nextDirection = Direction.DOWN;
-        } else if (y < 0 && direction !== Direction.DOWN) {
-            nextDirection = Direction.UP;
-        }
+        joystickDirectionIndicator.classList.remove('active');
     }
 }
 
@@ -1006,10 +1129,17 @@ function updateDirectionFromJoystick(x, y) {
 function resetJoystick() {
     joystickActive = false;
     joystickTouchId = null;
+    currentJoystickDirection = null;
+    joystickDirectionLockTime = 0;
     
     joystickBase.classList.remove('active');
     joystickThumb.classList.remove('active');
     joystickThumb.style.transform = 'translate(-50%, -50%)';
+    
+    // Reset direction indicator
+    if (joystickDirectionIndicator) {
+        joystickDirectionIndicator.classList.remove('active', 'dir-up', 'dir-down', 'dir-left', 'dir-right');
+    }
 }
 
 // D-Pad Button Handlers (legacy - replaced by virtual joystick)
