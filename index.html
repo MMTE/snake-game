@@ -11,7 +11,10 @@
         <!-- Start Screen -->
         <div id="start-screen" class="screen">
             <h1 class="game-title">🐍 SNAKE</h1>
-            <button id="start-btn" class="btn btn-primary">Start Game</button>
+            <div class="start-buttons">
+                <button id="start-btn" class="btn btn-primary">Start Game</button>
+                <button id="settings-btn" class="btn btn-icon" aria-label="Settings">⚙️</button>
+            </div>
             <div class="controls-hint">
                 <div class="controls-divider">─────────────────────────</div>
                 <p class="controls-text">Controls: Arrow Keys or WASD</p>
@@ -19,6 +22,122 @@
                 <div class="controls-divider">─────────────────────────</div>
             </div>
             <p class="high-score-display">High Score: <span id="start-high-score">0</span></p>
+        </div>
+
+        <!-- Settings Screen -->
+        <div id="settings-screen" class="screen hidden">
+            <div class="settings-header">
+                <button id="settings-back-btn" class="btn-back" aria-label="Back">←</button>
+                <h2 class="settings-title">⚙️ Settings</h2>
+            </div>
+            
+            <div class="settings-content">
+                <!-- Speed Setting -->
+                <div class="setting-group">
+                    <label class="setting-label">Game Speed</label>
+                    <div class="setting-options speed-options">
+                        <label class="radio-option">
+                            <input type="radio" name="speed" value="slow">
+                            <span class="radio-label">Slow</span>
+                            <span class="radio-hint">5 moves/sec</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="speed" value="normal" checked>
+                            <span class="radio-label">Normal</span>
+                            <span class="radio-hint">6.6 moves/sec</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="speed" value="fast">
+                            <span class="radio-label">Fast</span>
+                            <span class="radio-hint">10 moves/sec</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="speed" value="insane">
+                            <span class="radio-label">Insane</span>
+                            <span class="radio-hint">14 moves/sec</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Walls Setting -->
+                <div class="setting-group">
+                    <label class="setting-label">Wall Collision</label>
+                    <div class="setting-toggle">
+                        <span class="toggle-hint">Snake wraps around edges when OFF</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="walls-toggle" checked>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label" id="walls-label">ON</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Grid Size Setting -->
+                <div class="setting-group">
+                    <label class="setting-label">Grid Size</label>
+                    <div class="setting-options grid-options">
+                        <label class="radio-option">
+                            <input type="radio" name="grid-size" value="small">
+                            <span class="radio-label">Small</span>
+                            <span class="radio-hint">15×15</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="grid-size" value="medium" checked>
+                            <span class="radio-label">Medium</span>
+                            <span class="radio-hint">20×20</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="grid-size" value="large">
+                            <span class="radio-label">Large</span>
+                            <span class="radio-hint">25×25</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Snake Color Setting -->
+                <div class="setting-group">
+                    <label class="setting-label">Snake Color</label>
+                    <div class="setting-options color-options">
+                        <label class="color-option">
+                            <input type="radio" name="snake-color" value="green" checked>
+                            <span class="color-swatch" style="background: linear-gradient(135deg, #00ff88, #00cc6a);"></span>
+                            <span class="color-label">Green</span>
+                        </label>
+                        <label class="color-option">
+                            <input type="radio" name="snake-color" value="blue">
+                            <span class="color-swatch" style="background: linear-gradient(135deg, #00d4ff, #0099cc);"></span>
+                            <span class="color-label">Blue</span>
+                        </label>
+                        <label class="color-option">
+                            <input type="radio" name="snake-color" value="purple">
+                            <span class="color-swatch" style="background: linear-gradient(135deg, #b366ff, #8833ff);"></span>
+                            <span class="color-label">Purple</span>
+                        </label>
+                        <label class="color-option">
+                            <input type="radio" name="snake-color" value="orange">
+                            <span class="color-swatch" style="background: linear-gradient(135deg, #ffaa00, #ff7700);"></span>
+                            <span class="color-label">Orange</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Sound Setting -->
+                <div class="setting-group">
+                    <label class="setting-label">Sound Effects</label>
+                    <div class="setting-toggle">
+                        <span class="toggle-hint">Enable game sounds</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="sound-toggle">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label" id="sound-label">OFF</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="settings-footer">
+                <p class="settings-note">Settings are saved automatically</p>
+            </div>
         </div>
 
         <!-- Game Screen -->

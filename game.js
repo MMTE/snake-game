@@ -1,14 +1,78 @@
 // Snake Game - Main Game Logic
 
-// Game Constants
-const GRID_SIZE = 20;
+// ==========================================
+// GAME SETTINGS
+// ==========================================
+
+// Default Settings
+const DEFAULT_SETTINGS = {
+    speed: 'normal',      // slow, normal, fast, insane
+    walls: true,          // true = walls kill, false = wrap around
+    gridSize: 'medium',   // small, medium, large
+    snakeColor: 'green',  // green, blue, purple, orange
+    sound: false          // placeholder for sound
+};
+
+// Speed configurations (milliseconds between moves)
+const SPEED_CONFIG = {
+    slow: 200,     // 5 moves/sec
+    normal: 150,   // 6.6 moves/sec
+    fast: 100,     // 10 moves/sec
+    insane: 70     // 14 moves/sec
+};
+
+// Grid size configurations
+const GRID_CONFIG = {
+    small: 15,
+    medium: 20,
+    large: 25
+};
+
+// Snake color configurations
+const SNAKE_COLORS = {
+    green: {
+        head: '#00ff88',
+        body: '#00cc6a',
+        glow: 'rgba(0, 255, 136, 0.3)'
+    },
+    blue: {
+        head: '#00d4ff',
+        body: '#0099cc',
+        glow: 'rgba(0, 212, 255, 0.3)'
+    },
+    purple: {
+        head: '#b366ff',
+        body: '#8833ff',
+        glow: 'rgba(179, 102, 255, 0.3)'
+    },
+    orange: {
+        head: '#ffaa00',
+        body: '#ff7700',
+        glow: 'rgba(255, 170, 0, 0.3)'
+    }
+};
+
+// Current Settings (loaded from localStorage or defaults)
+let gameSettings = { ...DEFAULT_SETTINGS };
+
+// ==========================================
+// GAME CONSTANTS (now dynamic based on settings)
+// ==========================================
+
 const CELL_SIZE = 20;
-const CANVAS_SIZE = GRID_SIZE * CELL_SIZE;
-const GAME_SPEED = 100; // milliseconds between moves (10 moves per second)
+
+// Colors
+const COLORS = {
+    board: '#16213e',
+    gridLine: '#0f3460',
+    food: '#ff6b6b',
+    foodGlow: 'rgba(255, 107, 107, 0.3)'
+};
 
 // Game State
 const GameState = {
     IDLE: 'idle',
+    SETTINGS: 'settings',
     PLAYING: 'playing',
     PAUSED: 'paused',
     GAME_OVER: 'gameOver'
@@ -35,24 +99,164 @@ let gameLoop = null;
 let lastRenderTime = 0;
 let controlsHintTimeout = null;
 
+// Computed values based on settings
+let GRID_SIZE = GRID_CONFIG[gameSettings.gridSize];
+let CANVAS_SIZE = GRID_SIZE * CELL_SIZE;
+let GAME_SPEED = SPEED_CONFIG[gameSettings.speed];
+
 // DOM Elements
-let startScreen, gameScreen, pauseOverlay, gameoverOverlay;
+let startScreen, gameScreen, pauseOverlay, gameoverOverlay, settingsScreen;
 let currentScoreEl, highScoreEl, startHighScoreEl;
 let finalScoreEl, bestScoreEl, newRecordEl;
 let playingControlsHint;
 
-// Colors
-const COLORS = {
-    board: '#16213e',
-    gridLine: '#0f3460',
-    snakeHead: '#00ff88',
-    snakeBody: '#00cc6a',
-    food: '#ff6b6b',
-    foodGlow: 'rgba(255, 107, 107, 0.3)'
-};
+// ==========================================
+// SETTINGS FUNCTIONS
+// ==========================================
+
+// Load settings from localStorage
+function loadSettings() {
+    const saved = localStorage.getItem('snakeGameSettings');
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved);
+            gameSettings = { ...DEFAULT_SETTINGS, ...parsed };
+        } catch (e) {
+            console.warn('Failed to load settings, using defaults');
+            gameSettings = { ...DEFAULT_SETTINGS };
+        }
+    }
+    
+    // Apply settings to game variables
+    applySettings();
+}
+
+// Save settings to localStorage
+function saveSettings() {
+    localStorage.setItem('snakeGameSettings', JSON.stringify(gameSettings));
+}
+
+// Apply settings to game variables
+function applySettings() {
+    GRID_SIZE = GRID_CONFIG[gameSettings.gridSize];
+    CANVAS_SIZE = GRID_SIZE * CELL_SIZE;
+    GAME_SPEED = SPEED_CONFIG[gameSettings.speed];
+    
+    // Update canvas size if canvas exists
+    if (canvas) {
+        canvas.width = CANVAS_SIZE;
+        canvas.height = CANVAS_SIZE;
+    }
+}
+
+// Update settings UI to reflect current settings
+function updateSettingsUI() {
+    // Speed
+    const speedRadio = document.querySelector(`input[name="speed"][value="${gameSettings.speed}"]`);
+    if (speedRadio) speedRadio.checked = true;
+    
+    // Walls
+    const wallsToggle = document.getElementById('walls-toggle');
+    const wallsLabel = document.getElementById('walls-label');
+    if (wallsToggle) {
+        wallsToggle.checked = gameSettings.walls;
+        if (wallsLabel) wallsLabel.textContent = gameSettings.walls ? 'ON' : 'OFF';
+    }
+    
+    // Grid Size
+    const gridRadio = document.querySelector(`input[name="grid-size"][value="${gameSettings.gridSize}"]`);
+    if (gridRadio) gridRadio.checked = true;
+    
+    // Snake Color
+    const colorRadio = document.querySelector(`input[name="snake-color"][value="${gameSettings.snakeColor}"]`);
+    if (colorRadio) colorRadio.checked = true;
+    
+    // Sound
+    const soundToggle = document.getElementById('sound-toggle');
+    const soundLabel = document.getElementById('sound-label');
+    if (soundToggle) {
+        soundToggle.checked = gameSettings.sound;
+        if (soundLabel) soundLabel.textContent = gameSettings.sound ? 'ON' : 'OFF';
+    }
+}
+
+// Setup settings event listeners
+function setupSettingsListeners() {
+    // Settings button
+    document.getElementById('settings-btn').addEventListener('click', showSettings);
+    
+    // Back button
+    document.getElementById('settings-back-btn').addEventListener('click', hideSettings);
+    
+    // Speed options
+    document.querySelectorAll('input[name="speed"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            gameSettings.speed = e.target.value;
+            GAME_SPEED = SPEED_CONFIG[gameSettings.speed];
+            saveSettings();
+        });
+    });
+    
+    // Walls toggle
+    const wallsToggle = document.getElementById('walls-toggle');
+    const wallsLabel = document.getElementById('walls-label');
+    if (wallsToggle) {
+        wallsToggle.addEventListener('change', (e) => {
+            gameSettings.walls = e.target.checked;
+            if (wallsLabel) wallsLabel.textContent = gameSettings.walls ? 'ON' : 'OFF';
+            saveSettings();
+        });
+    }
+    
+    // Grid size options
+    document.querySelectorAll('input[name="grid-size"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            gameSettings.gridSize = e.target.value;
+            applySettings();
+            saveSettings();
+        });
+    });
+    
+    // Snake color options
+    document.querySelectorAll('input[name="snake-color"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            gameSettings.snakeColor = e.target.value;
+            saveSettings();
+        });
+    });
+    
+    // Sound toggle
+    const soundToggle = document.getElementById('sound-toggle');
+    const soundLabel = document.getElementById('sound-label');
+    if (soundToggle) {
+        soundToggle.addEventListener('change', (e) => {
+            gameSettings.sound = e.target.checked;
+            if (soundLabel) soundLabel.textContent = gameSettings.sound ? 'ON' : 'OFF';
+            saveSettings();
+        });
+    }
+}
+
+// Show settings screen
+function showSettings() {
+    updateSettingsUI();
+    showScreen(GameState.SETTINGS);
+}
+
+// Hide settings screen
+function hideSettings() {
+    showScreen(GameState.IDLE);
+}
+
+// ==========================================
+// INITIALIZATION
+// ==========================================
 
 // Initialize Game
 function init() {
+    // Load settings first
+    loadSettings();
+    
     // Get DOM elements
     canvas = document.getElementById('game-board');
     ctx = canvas.getContext('2d');
@@ -61,6 +265,7 @@ function init() {
     gameScreen = document.getElementById('game-screen');
     pauseOverlay = document.getElementById('pause-overlay');
     gameoverOverlay = document.getElementById('gameover-overlay');
+    settingsScreen = document.getElementById('settings-screen');
     
     currentScoreEl = document.getElementById('current-score');
     highScoreEl = document.getElementById('high-score');
@@ -75,6 +280,7 @@ function init() {
     
     // Setup event listeners
     setupEventListeners();
+    setupSettingsListeners();
     
     // Set canvas size
     canvas.width = CANVAS_SIZE;
@@ -120,13 +326,19 @@ function setupEventListeners() {
 // Handle Keyboard Input
 function handleKeyDown(e) {
     // Prevent default for game keys
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyP'].includes(e.code)) {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyP', 'Escape'].includes(e.code)) {
         e.preventDefault();
     }
     
     // Start game on Enter or Space from idle state
     if (gameState === GameState.IDLE && (e.code === 'Enter' || e.code === 'Space')) {
         startGame();
+        return;
+    }
+    
+    // Go back from settings
+    if (gameState === GameState.SETTINGS && (e.code === 'Escape' || e.code === 'Backspace')) {
+        hideSettings();
         return;
     }
     
@@ -185,13 +397,24 @@ function handleKeyDown(e) {
     }
 }
 
+// ==========================================
+// GAME LOOP
+// ==========================================
+
 // Start Game
 function startGame() {
+    // Apply current settings (in case grid size changed)
+    applySettings();
+    
+    // Calculate starting position based on grid size
+    const startX = Math.floor(GRID_SIZE / 2);
+    const startY = Math.floor(GRID_SIZE / 2);
+    
     // Reset game state
     snake = [
-        { x: 10, y: 10 },
-        { x: 9, y: 10 },
-        { x: 8, y: 10 }
+        { x: startX, y: startY },
+        { x: startX - 1, y: startY },
+        { x: startX - 2, y: startY }
     ];
     direction = Direction.RIGHT;
     nextDirection = Direction.RIGHT;
@@ -250,8 +473,23 @@ function update() {
     head.x += direction.x;
     head.y += direction.y;
     
-    // Check for collisions
-    if (checkCollision(head)) {
+    // Handle wall collision based on settings
+    if (gameSettings.walls) {
+        // Walls kill mode
+        if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE) {
+            gameOver();
+            return;
+        }
+    } else {
+        // Wrap around mode
+        if (head.x < 0) head.x = GRID_SIZE - 1;
+        if (head.x >= GRID_SIZE) head.x = 0;
+        if (head.y < 0) head.y = GRID_SIZE - 1;
+        if (head.y >= GRID_SIZE) head.y = 0;
+    }
+    
+    // Check for self collision
+    if (checkSelfCollision(head)) {
         gameOver();
         return;
     }
@@ -273,7 +511,17 @@ function update() {
     }
 }
 
-// Check Collision
+// Check Self Collision (separate from wall collision)
+function checkSelfCollision(head) {
+    for (let i = 0; i < snake.length; i++) {
+        if (snake[i].x === head.x && snake[i].y === head.y) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Legacy check collision (kept for reference)
 function checkCollision(head) {
     // Wall collision
     if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE) {
@@ -311,6 +559,10 @@ function spawnFood() {
 function isOnSnake(pos) {
     return snake.some(segment => segment.x === pos.x && segment.y === pos.y);
 }
+
+// ==========================================
+// RENDERING
+// ==========================================
 
 // Render Game
 function render() {
@@ -376,6 +628,9 @@ function drawFood() {
 
 // Draw Snake
 function drawSnake() {
+    // Get current snake colors based on settings
+    const snakeColors = SNAKE_COLORS[gameSettings.snakeColor] || SNAKE_COLORS.green;
+    
     snake.forEach((segment, index) => {
         const x = segment.x * CELL_SIZE;
         const y = segment.y * CELL_SIZE;
@@ -389,20 +644,24 @@ function drawSnake() {
             const glowRadius = CELL_SIZE * 0.8;
             
             const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, glowRadius);
-            gradient.addColorStop(0, 'rgba(0, 255, 136, 0.3)');
+            gradient.addColorStop(0, snakeColors.glow);
             gradient.addColorStop(1, 'transparent');
             
             ctx.fillStyle = gradient;
             ctx.fillRect(x - CELL_SIZE / 2, y - CELL_SIZE / 2, CELL_SIZE * 2, CELL_SIZE * 2);
             
-            ctx.fillStyle = COLORS.snakeHead;
+            ctx.fillStyle = snakeColors.head;
         } else {
             // Gradient color for body (darker towards tail)
             const colorIntensity = 1 - (index / snake.length) * 0.3;
-            const r = Math.floor(0 * colorIntensity);
-            const g = Math.floor(204 * colorIntensity);
-            const b = Math.floor(106 * colorIntensity);
-            ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+            const baseColor = snakeColors.body;
+            
+            // Parse the hex color
+            const r = parseInt(baseColor.slice(1, 3), 16);
+            const g = parseInt(baseColor.slice(3, 5), 16);
+            const b = parseInt(baseColor.slice(5, 7), 16);
+            
+            ctx.fillStyle = `rgb(${Math.floor(r * colorIntensity)}, ${Math.floor(g * colorIntensity)}, ${Math.floor(b * colorIntensity)})`;
         }
         
         ctx.beginPath();
@@ -410,6 +669,10 @@ function drawSnake() {
         ctx.fill();
     });
 }
+
+// ==========================================
+// GAME STATE MANAGEMENT
+// ==========================================
 
 // Toggle Pause
 function togglePause() {
@@ -497,11 +760,15 @@ function showScreen(state) {
     // Hide all screens
     startScreen.classList.add('hidden');
     gameScreen.classList.add('hidden');
+    settingsScreen.classList.add('hidden');
     
     // Show appropriate screen
     switch (state) {
         case GameState.IDLE:
             startScreen.classList.remove('hidden');
+            break;
+        case GameState.SETTINGS:
+            settingsScreen.classList.remove('hidden');
             break;
         case GameState.PLAYING:
         case GameState.PAUSED:
@@ -510,6 +777,10 @@ function showScreen(state) {
             break;
     }
 }
+
+// ==========================================
+// UI UPDATES
+// ==========================================
 
 // Update Score Display
 function updateScoreDisplay() {
@@ -543,7 +814,10 @@ function showControlsHint() {
     }, 5000);
 }
 
-// Touch Controls
+// ==========================================
+// TOUCH CONTROLS
+// ==========================================
+
 let touchStartX = 0;
 let touchStartY = 0;
 const SWIPE_THRESHOLD = 30;
@@ -749,6 +1023,10 @@ function setupTouchButtons() {
         });
     }
 }
+
+// ==========================================
+// INITIALIZATION
+// ==========================================
 
 // Initialize game when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
