@@ -543,5 +543,131 @@ function showControlsHint() {
     }, 5000);
 }
 
+// Touch Controls
+let touchStartX = 0;
+let touchStartY = 0;
+const SWIPE_THRESHOLD = 30;
+
+// Handle Touch Start
+function handleTouchStart(e) {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+}
+
+// Handle Touch End (Swipe)
+function handleTouchEnd(e) {
+    if (gameState !== GameState.PLAYING) return;
+    
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+    
+    const deltaX = touchEndX - touchStartX;
+    const deltaY = touchEndY - touchStartY;
+    
+    // Check if it's a swipe (not a tap)
+    if (Math.abs(deltaX) < SWIPE_THRESHOLD && Math.abs(deltaY) < SWIPE_THRESHOLD) {
+        return;
+    }
+    
+    // Determine swipe direction
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        // Horizontal swipe
+        if (deltaX > 0 && direction !== Direction.LEFT) {
+            nextDirection = Direction.RIGHT;
+        } else if (deltaX < 0 && direction !== Direction.RIGHT) {
+            nextDirection = Direction.LEFT;
+        }
+    } else {
+        // Vertical swipe
+        if (deltaY > 0 && direction !== Direction.UP) {
+            nextDirection = Direction.DOWN;
+        } else if (deltaY < 0 && direction !== Direction.DOWN) {
+            nextDirection = Direction.UP;
+        }
+    }
+}
+
+// D-Pad Button Handlers
+function setupTouchButtons() {
+    const dpadUp = document.getElementById('dpad-up');
+    const dpadDown = document.getElementById('dpad-down');
+    const dpadLeft = document.getElementById('dpad-left');
+    const dpadRight = document.getElementById('dpad-right');
+    const touchStart = document.getElementById('touch-start');
+    const touchPause = document.getElementById('touch-pause');
+    const touchPlayAgain = document.getElementById('touch-play-again');
+    
+    if (dpadUp) {
+        dpadUp.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameState === GameState.PLAYING && direction !== Direction.DOWN) {
+                nextDirection = Direction.UP;
+            }
+        });
+    }
+    
+    if (dpadDown) {
+        dpadDown.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameState === GameState.PLAYING && direction !== Direction.UP) {
+                nextDirection = Direction.DOWN;
+            }
+        });
+    }
+    
+    if (dpadLeft) {
+        dpadLeft.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameState === GameState.PLAYING && direction !== Direction.RIGHT) {
+                nextDirection = Direction.LEFT;
+            }
+        });
+    }
+    
+    if (dpadRight) {
+        dpadRight.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameState === GameState.PLAYING && direction !== Direction.LEFT) {
+                nextDirection = Direction.RIGHT;
+            }
+        });
+    }
+    
+    if (touchStart) {
+        touchStart.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (gameState === GameState.IDLE) {
+                startGame();
+            }
+        });
+    }
+    
+    if (touchPause) {
+        touchPause.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            togglePause();
+        });
+    }
+    
+    if (touchPlayAgain) {
+        touchPlayAgain.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            restartGame();
+        });
+    }
+}
+
 // Initialize game when DOM is loaded
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+    init();
+    
+    // Setup touch controls
+    const gameContainer = document.querySelector('.game-container');
+    if (gameContainer) {
+        gameContainer.addEventListener('touchstart', handleTouchStart, { passive: true });
+        gameContainer.addEventListener('touchend', handleTouchEnd, { passive: true });
+    }
+    
+    // Setup touch buttons
+    setupTouchButtons();
+});
