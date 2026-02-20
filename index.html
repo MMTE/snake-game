@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-container">
+        <!-- Start Screen -->
+        <div id="start-screen" class="screen">
+            <h1 class="game-title">🐍 SNAKE</h1>
+            <button id="start-btn" class="btn btn-primary">Start Game</button>
+            <div class="controls-hint">
+                <div class="controls-divider">─────────────────────────</div>
+                <p class="controls-text">Controls: Arrow Keys or WASD</p>
+                <p class="controls-text">Pause: Space or P</p>
+                <div class="controls-divider">─────────────────────────</div>
+            </div>
+            <p class="high-score-display">High Score: <span id="start-high-score">0</span></p>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="screen hidden">
+            <div class="score-bar">
+                <div class="score-item">
+                    <span class="score-label">SCORE:</span>
+                    <span id="current-score" class="score-value">0</span>
+                </div>
+                <div class="score-item">
+                    <span class="score-label">HIGH:</span>
+                    <span id="high-score" class="score-value">0</span>
+                </div>
+                <button id="pause-btn" class="btn-pause" aria-label="Pause game">⏸</button>
+            </div>
+            
+            <div class="game-board-container">
+                <canvas id="game-board" width="400" height="400"></canvas>
+            </div>
+            
+            <p id="playing-controls-hint" class="playing-controls">← ↑ ↓ →  or  W A S D</p>
+        </div>
+
+        <!-- Pause Overlay -->
+        <div id="pause-overlay" class="overlay hidden">
+            <div class="modal">
+                <h2 class="modal-title">PAUSED</h2>
+                <button id="resume-btn" class="btn btn-primary">Resume</button>
+                <button id="restart-btn-pause" class="btn btn-secondary">Restart</button>
+                <button id="main-menu-btn-pause" class="btn btn-secondary">Main Menu</button>
+            </div>
+        </div>
+
+        <!-- Game Over Overlay -->
+        <div id="gameover-overlay" class="overlay hidden">
+            <div class="modal">
+                <h2 class="modal-title gameover-title">GAME OVER</h2>
+                <div class="score-display">
+                    <p class="final-score">Score: <span id="final-score">0</span></p>
+                    <p class="best-score">Best: <span id="best-score">0</span></p>
+                    <p id="new-record" class="new-record hidden">★ New Record!</p>
+                </div>
+                <button id="play-again-btn" class="btn btn-primary">Play Again</button>
+                <button id="main-menu-btn-gameover" class="btn btn-secondary">Main Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
