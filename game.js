@@ -550,12 +550,18 @@ const SWIPE_THRESHOLD = 30;
 
 // Handle Touch Start
 function handleTouchStart(e) {
+    // Ignore if touch is on joystick
+    if (e.target.closest('.joystick-container')) return;
+    
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
 }
 
 // Handle Touch End (Swipe)
 function handleTouchEnd(e) {
+    // Ignore if touch is on joystick
+    if (e.target.closest('.joystick-container')) return;
+    
     if (gameState !== GameState.PLAYING) return;
     
     const touchEndX = e.changedTouches[0].clientX;
@@ -587,72 +593,159 @@ function handleTouchEnd(e) {
     }
 }
 
-// D-Pad Button Handlers
+// Virtual Joystick Variables
+let joystickBase = null;
+let joystickThumb = null;
+let joystickActive = false;
+let joystickTouchId = null;
+const JOYSTICK_DEAD_ZONE = 0.2; // 20% dead zone in center
+const JOYSTICK_MAX_DISTANCE = 42; // Max distance thumb can move from center
+
+// Setup Virtual Joystick
+function setupVirtualJoystick() {
+    joystickBase = document.getElementById('joystick-base');
+    joystickThumb = document.getElementById('joystick-thumb');
+    
+    if (!joystickBase || !joystickThumb) return;
+    
+    // Touch start on joystick
+    joystickBase.addEventListener('touchstart', handleJoystickTouchStart, { passive: false });
+    
+    // Touch move anywhere on screen (joystick might move outside base)
+    document.addEventListener('touchmove', handleJoystickTouchMove, { passive: false });
+    
+    // Touch end
+    document.addEventListener('touchend', handleJoystickTouchEnd, { passive: true });
+    document.addEventListener('touchcancel', handleJoystickTouchEnd, { passive: true });
+}
+
+// Handle Joystick Touch Start
+function handleJoystickTouchStart(e) {
+    if (gameState !== GameState.PLAYING) return;
+    
+    e.preventDefault();
+    
+    const touch = e.touches[0];
+    joystickTouchId = touch.identifier;
+    joystickActive = true;
+    
+    joystickBase.classList.add('active');
+    joystickThumb.classList.add('active');
+    
+    updateJoystickPosition(touch);
+}
+
+// Handle Joystick Touch Move
+function handleJoystickTouchMove(e) {
+    if (!joystickActive || gameState !== GameState.PLAYING) return;
+    
+    // Find our joystick touch
+    let touch = null;
+    for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i].identifier === joystickTouchId) {
+            touch = e.touches[i];
+            break;
+        }
+    }
+    
+    if (!touch) return;
+    
+    e.preventDefault();
+    updateJoystickPosition(touch);
+}
+
+// Handle Joystick Touch End
+function handleJoystickTouchEnd(e) {
+    // Check if our joystick touch ended
+    let found = false;
+    for (let i = 0; i < e.touches.length; i++) {
+        if (e.touches[i].identifier === joystickTouchId) {
+            found = true;
+            break;
+        }
+    }
+    
+    if (!found && joystickActive) {
+        resetJoystick();
+    }
+}
+
+// Update Joystick Position
+function updateJoystickPosition(touch) {
+    const baseRect = joystickBase.getBoundingClientRect();
+    const centerX = baseRect.left + baseRect.width / 2;
+    const centerY = baseRect.top + baseRect.height / 2;
+    
+    let deltaX = touch.clientX - centerX;
+    let deltaY = touch.clientY - centerY;
+    
+    // Calculate distance from center
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+    // Clamp to max distance
+    if (distance > JOYSTICK_MAX_DISTANCE) {
+        const angle = Math.atan2(deltaY, deltaX);
+        deltaX = Math.cos(angle) * JOYSTICK_MAX_DISTANCE;
+        deltaY = Math.sin(angle) * JOYSTICK_MAX_DISTANCE;
+    }
+    
+    // Update thumb position
+    joystickThumb.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
+    
+    // Calculate normalized values (-1 to 1)
+    const normalizedX = deltaX / JOYSTICK_MAX_DISTANCE;
+    const normalizedY = deltaY / JOYSTICK_MAX_DISTANCE;
+    
+    // Determine direction based on joystick position
+    updateDirectionFromJoystick(normalizedX, normalizedY);
+}
+
+// Update Direction from Joystick
+function updateDirectionFromJoystick(x, y) {
+    // Calculate distance from center
+    const distance = Math.sqrt(x * x + y * y);
+    
+    // Apply dead zone
+    if (distance < JOYSTICK_DEAD_ZONE) {
+        return; // Ignore input in dead zone
+    }
+    
+    // Determine primary direction (whichever axis is stronger)
+    if (Math.abs(x) > Math.abs(y)) {
+        // Horizontal movement dominates
+        if (x > 0 && direction !== Direction.LEFT) {
+            nextDirection = Direction.RIGHT;
+        } else if (x < 0 && direction !== Direction.RIGHT) {
+            nextDirection = Direction.LEFT;
+        }
+    } else {
+        // Vertical movement dominates
+        if (y > 0 && direction !== Direction.UP) {
+            nextDirection = Direction.DOWN;
+        } else if (y < 0 && direction !== Direction.DOWN) {
+            nextDirection = Direction.UP;
+        }
+    }
+}
+
+// Reset Joystick to Center
+function resetJoystick() {
+    joystickActive = false;
+    joystickTouchId = null;
+    
+    joystickBase.classList.remove('active');
+    joystickThumb.classList.remove('active');
+    joystickThumb.style.transform = 'translate(-50%, -50%)';
+}
+
+// D-Pad Button Handlers (legacy - replaced by virtual joystick)
 function setupTouchButtons() {
-    const dpadUp = document.getElementById('dpad-up');
-    const dpadDown = document.getElementById('dpad-down');
-    const dpadLeft = document.getElementById('dpad-left');
-    const dpadRight = document.getElementById('dpad-right');
-    const touchStart = document.getElementById('touch-start');
     const touchPause = document.getElementById('touch-pause');
-    const touchPlayAgain = document.getElementById('touch-play-again');
-    
-    if (dpadUp) {
-        dpadUp.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (gameState === GameState.PLAYING && direction !== Direction.DOWN) {
-                nextDirection = Direction.UP;
-            }
-        });
-    }
-    
-    if (dpadDown) {
-        dpadDown.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (gameState === GameState.PLAYING && direction !== Direction.UP) {
-                nextDirection = Direction.DOWN;
-            }
-        });
-    }
-    
-    if (dpadLeft) {
-        dpadLeft.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (gameState === GameState.PLAYING && direction !== Direction.RIGHT) {
-                nextDirection = Direction.LEFT;
-            }
-        });
-    }
-    
-    if (dpadRight) {
-        dpadRight.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (gameState === GameState.PLAYING && direction !== Direction.LEFT) {
-                nextDirection = Direction.RIGHT;
-            }
-        });
-    }
-    
-    if (touchStart) {
-        touchStart.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (gameState === GameState.IDLE) {
-                startGame();
-            }
-        });
-    }
     
     if (touchPause) {
         touchPause.addEventListener('touchstart', (e) => {
             e.preventDefault();
             togglePause();
-        });
-    }
-    
-    if (touchPlayAgain) {
-        touchPlayAgain.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            restartGame();
         });
     }
 }
@@ -667,6 +760,9 @@ document.addEventListener('DOMContentLoaded', () => {
         gameContainer.addEventListener('touchstart', handleTouchStart, { passive: true });
         gameContainer.addEventListener('touchend', handleTouchEnd, { passive: true });
     }
+    
+    // Setup virtual joystick
+    setupVirtualJoystick();
     
     // Setup touch buttons
     setupTouchButtons();
