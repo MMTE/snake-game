@@ -1,6 +1,81 @@
 // Snake Game - Main Game Logic
 
 // ==========================================
+// BALE MINI APP INTEGRATION
+// ==========================================
+
+const isBaleApp = typeof window !== 'undefined' &&
+                  typeof window.Bale !== 'undefined' &&
+                  !!window.Bale.WebApp;
+
+let baleUser     = null;   // { id, first_name, username, ... }
+let baleInitData = '';     // raw initData string for server-side verification
+
+function initBale() {
+    if (!isBaleApp) return;
+
+    try {
+        baleInitData = window.Bale.WebApp.initData || '';
+        baleUser     = window.Bale.WebApp.initDataUnsafe?.user || null;
+
+        // Expand to fill the messenger window
+        window.Bale.WebApp.expand();
+
+        // Wire the native Settings button to open the in-game settings screen
+        window.Bale.WebApp.SettingsButton.show();
+        window.Bale.WebApp.onEvent('settingsButtonPressed', () => showSettings());
+
+        // Show the user's name on the start screen
+        if (baleUser) {
+            const infoEl = document.getElementById('bale-user-info');
+            const nameEl = document.getElementById('bale-user-name');
+            if (infoEl && nameEl) {
+                nameEl.textContent = `👤 ${baleUser.first_name}`;
+                infoEl.classList.remove('hidden');
+            }
+        }
+    } catch (e) {
+        console.warn('Bale init failed:', e);
+    }
+}
+
+/**
+ * Submit the player's score to the backend.
+ * Resolves with { bestScore, rank } on success, or null on failure.
+ */
+async function submitScore(scoreValue) {
+    if (!baleInitData) return null;
+
+    try {
+        const res = await fetch('/api/score', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ score: scoreValue, initData: baleInitData }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+    } catch (e) {
+        console.warn('Score submission failed:', e);
+        return null;
+    }
+}
+
+/**
+ * Fetch the global leaderboard from the backend.
+ * Resolves with an array of player objects, or null on failure.
+ */
+async function fetchLeaderboard() {
+    try {
+        const res = await fetch('/api/leaderboard?limit=20');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+    } catch (e) {
+        console.warn('Leaderboard fetch failed:', e);
+        return null;
+    }
+}
+
+// ==========================================
 // GAME SETTINGS
 // ==========================================
 
@@ -77,7 +152,8 @@ const GameState = {
     SETTINGS: 'settings',
     PLAYING: 'playing',
     PAUSED: 'paused',
-    GAME_OVER: 'gameOver'
+    GAME_OVER: 'gameOver',
+    LEADERBOARD: 'leaderboard'
 };
 
 // Direction Vectors
@@ -107,9 +183,10 @@ let CANVAS_SIZE = GRID_SIZE * CELL_SIZE;
 let GAME_SPEED = SPEED_CONFIG[gameSettings.speed];
 
 // DOM Elements
-let startScreen, gameScreen, pauseOverlay, gameoverOverlay, settingsScreen;
+let startScreen, gameScreen, pauseOverlay, gameoverOverlay, settingsScreen, leaderboardScreen;
 let currentScoreEl, highScoreEl, startHighScoreEl;
 let finalScoreEl, bestScoreEl, newRecordEl;
+let playerRankEl, rankValueEl, scoreSubmitStatusEl;
 let playingControlsHint;
 
 // ==========================================
@@ -288,38 +365,45 @@ function hideSettings() {
 
 // Initialize Game
 function init() {
+    // Initialize Bale integration first
+    initBale();
+
     // Load settings first
     loadSettings();
-    
+
     // Get DOM elements
     canvas = document.getElementById('game-board');
     ctx = canvas.getContext('2d');
-    
+
     startScreen = document.getElementById('start-screen');
     gameScreen = document.getElementById('game-screen');
     pauseOverlay = document.getElementById('pause-overlay');
     gameoverOverlay = document.getElementById('gameover-overlay');
     settingsScreen = document.getElementById('settings-screen');
-    
+    leaderboardScreen = document.getElementById('leaderboard-screen');
+
     currentScoreEl = document.getElementById('current-score');
     highScoreEl = document.getElementById('high-score');
     startHighScoreEl = document.getElementById('start-high-score');
     finalScoreEl = document.getElementById('final-score');
     bestScoreEl = document.getElementById('best-score');
     newRecordEl = document.getElementById('new-record');
+    playerRankEl = document.getElementById('player-rank');
+    rankValueEl = document.getElementById('rank-value');
+    scoreSubmitStatusEl = document.getElementById('score-submit-status');
     playingControlsHint = document.getElementById('playing-controls-hint');
-    
+
     // Load high score from localStorage
     loadHighScore();
-    
+
     // Setup event listeners
     setupEventListeners();
     setupSettingsListeners();
-    
+
     // Set canvas size
     canvas.width = CANVAS_SIZE;
     canvas.height = CANVAS_SIZE;
-    
+
     // Show start screen
     showScreen(GameState.IDLE);
 }
@@ -340,19 +424,29 @@ function saveHighScore() {
 function setupEventListeners() {
     // Start button
     document.getElementById('start-btn').addEventListener('click', startGame);
-    
+
     // Pause button
     document.getElementById('pause-btn').addEventListener('click', togglePause);
-    
+
     // Pause overlay buttons
     document.getElementById('resume-btn').addEventListener('click', resumeGame);
     document.getElementById('restart-btn-pause').addEventListener('click', restartGame);
     document.getElementById('main-menu-btn-pause').addEventListener('click', goToMainMenu);
-    
+
     // Game over overlay buttons
     document.getElementById('play-again-btn').addEventListener('click', restartGame);
     document.getElementById('main-menu-btn-gameover').addEventListener('click', goToMainMenu);
-    
+    document.getElementById('view-leaderboard-btn').addEventListener('click', () => {
+        gameoverOverlay.classList.add('hidden');
+        showLeaderboard();
+    });
+
+    // Leaderboard button on start screen
+    document.getElementById('leaderboard-btn').addEventListener('click', showLeaderboard);
+
+    // Leaderboard back button
+    document.getElementById('leaderboard-back-btn').addEventListener('click', hideLeaderboard);
+
     // Keyboard controls
     document.addEventListener('keydown', handleKeyDown);
 }
@@ -370,9 +464,11 @@ function handleKeyDown(e) {
         return;
     }
     
-    // Go back from settings
-    if (gameState === GameState.SETTINGS && (e.code === 'Escape' || e.code === 'Backspace')) {
-        hideSettings();
+    // Go back from settings or leaderboard
+    if ((gameState === GameState.SETTINGS || gameState === GameState.LEADERBOARD) &&
+        (e.code === 'Escape' || e.code === 'Backspace')) {
+        if (gameState === GameState.SETTINGS) hideSettings();
+        else hideLeaderboard();
         return;
     }
     
@@ -439,6 +535,11 @@ function handleKeyDown(e) {
 function startGame() {
     // Apply current settings (in case grid size changed)
     applySettings();
+
+    // Tell Bale to ask before closing while playing
+    if (isBaleApp) {
+        try { window.Bale.WebApp.enableClosingConfirmation(); } catch {}
+    }
     
     // Calculate starting position based on grid size
     const startX = Math.floor(GRID_SIZE / 2);
@@ -736,7 +837,12 @@ function resumeGame() {
 function gameOver() {
     gameState = GameState.GAME_OVER;
     cancelAnimationFrame(gameLoop);
-    
+
+    // Disable closing confirmation now that the game has ended
+    if (isBaleApp) {
+        try { window.Bale.WebApp.disableClosingConfirmation(); } catch {}
+    }
+
     // Check for new high score
     const isNewRecord = score > highScore;
     if (isNewRecord) {
@@ -744,19 +850,39 @@ function gameOver() {
         saveHighScore();
         updateHighScoreDisplay();
     }
-    
+
     // Update game over screen
     finalScoreEl.textContent = score;
     bestScoreEl.textContent = highScore;
-    
+
     if (isNewRecord && score > 0) {
         newRecordEl.classList.remove('hidden');
     } else {
         newRecordEl.classList.add('hidden');
     }
-    
+
+    // Hide rank and status initially
+    playerRankEl.classList.add('hidden');
+    scoreSubmitStatusEl.classList.add('hidden');
+
     // Show game over overlay
     gameoverOverlay.classList.remove('hidden');
+
+    // Submit score to backend (async – updates the modal once done)
+    if (baleInitData && score > 0) {
+        scoreSubmitStatusEl.textContent = 'Submitting score...';
+        scoreSubmitStatusEl.classList.remove('hidden');
+
+        submitScore(score).then((result) => {
+            if (!result) {
+                scoreSubmitStatusEl.textContent = 'Could not submit score';
+                return;
+            }
+            scoreSubmitStatusEl.classList.add('hidden');
+            rankValueEl.textContent = `#${result.rank}`;
+            playerRankEl.classList.remove('hidden');
+        });
+    }
 }
 
 // Restart Game
@@ -775,6 +901,11 @@ function goToMainMenu() {
     if (gameLoop) {
         cancelAnimationFrame(gameLoop);
     }
+
+    // Disable closing confirmation when back at menu
+    if (isBaleApp) {
+        try { window.Bale.WebApp.disableClosingConfirmation(); } catch {}
+    }
     
     // Hide overlays
     pauseOverlay.classList.add('hidden');
@@ -790,12 +921,13 @@ function goToMainMenu() {
 // Show Screen
 function showScreen(state) {
     gameState = state;
-    
+
     // Hide all screens
     startScreen.classList.add('hidden');
     gameScreen.classList.add('hidden');
     settingsScreen.classList.add('hidden');
-    
+    if (leaderboardScreen) leaderboardScreen.classList.add('hidden');
+
     // Show appropriate screen
     switch (state) {
         case GameState.IDLE:
@@ -804,12 +936,77 @@ function showScreen(state) {
         case GameState.SETTINGS:
             settingsScreen.classList.remove('hidden');
             break;
+        case GameState.LEADERBOARD:
+            if (leaderboardScreen) leaderboardScreen.classList.remove('hidden');
+            break;
         case GameState.PLAYING:
         case GameState.PAUSED:
         case GameState.GAME_OVER:
             gameScreen.classList.remove('hidden');
             break;
     }
+}
+
+// ==========================================
+// LEADERBOARD SCREEN
+// ==========================================
+
+function showLeaderboard() {
+    showScreen(GameState.LEADERBOARD);
+
+    const loadingEl = document.getElementById('leaderboard-loading');
+    const errorEl   = document.getElementById('leaderboard-error');
+    const tableEl   = document.getElementById('leaderboard-table');
+    const bodyEl    = document.getElementById('leaderboard-body');
+    const myRankEl  = document.getElementById('my-rank-display');
+
+    // Reset to loading state
+    loadingEl.classList.remove('hidden');
+    errorEl.classList.add('hidden');
+    tableEl.classList.add('hidden');
+    myRankEl.classList.add('hidden');
+
+    fetchLeaderboard().then((rows) => {
+        loadingEl.classList.add('hidden');
+
+        if (!rows) {
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
+        if (!rows.length) {
+            errorEl.textContent = 'No scores yet – be the first!';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
+        const medals = ['🥇', '🥈', '🥉'];
+        const currentUserId = baleUser ? String(baleUser.id) : null;
+
+        bodyEl.innerHTML = rows.map((r) => {
+            const medal   = medals[r.rank - 1] || String(r.rank);
+            const name    = r.username ? `@${r.username}` : r.first_name;
+            const isMe    = currentUserId && String(r.user_id) === currentUserId;
+            const rowClass = isMe ? ' class="my-row"' : '';
+            return `<tr${rowClass}><td>${medal}</td><td>${name}</td><td>${r.score}</td></tr>`;
+        }).join('');
+
+        tableEl.classList.remove('hidden');
+
+        // Show the current user's own rank below the table
+        if (currentUserId) {
+            const myEntry = rows.find((r) => String(r.user_id) === currentUserId);
+            if (myEntry) {
+                document.getElementById('my-score-val').textContent = myEntry.score;
+                document.getElementById('my-rank-val').textContent  = `#${myEntry.rank}`;
+                myRankEl.classList.remove('hidden');
+            }
+        }
+    });
+}
+
+function hideLeaderboard() {
+    showScreen(GameState.IDLE);
 }
 
 // ==========================================
