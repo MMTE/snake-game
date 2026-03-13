@@ -18,6 +18,9 @@ function initBale() {
         baleInitData = window.Bale.WebApp.initData || '';
         baleUser     = window.Bale.WebApp.initDataUnsafe?.user || null;
 
+        // Signal that the app is ready (hides loading placeholder)
+        window.Bale.WebApp.ready();
+
         // Expand to fill the messenger window
         window.Bale.WebApp.expand();
 
